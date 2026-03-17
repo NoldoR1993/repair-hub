@@ -19,6 +19,8 @@ classic-dist
 .tmp*.js
 vite.log
 vite.err.log
+__pycache__/
+*.pyc
 
 # Editor directories and files
 .vscode/*
