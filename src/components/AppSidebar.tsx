@@ -1,7 +1,7 @@
-import { ClipboardList, LayoutDashboard, Wrench, FileText } from 'lucide-react';
+import { LayoutDashboard, Wrench, FileText, LogOut } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useRole } from '@/contexts/RoleContext';
-import { RoleSwitcher } from '@/components/RoleSwitcher';
+import { BrandMark } from '@/components/BrandMark';
 import {
   Sidebar,
   SidebarContent,
@@ -15,16 +15,19 @@ import {
   SidebarFooter,
   useSidebar,
 } from '@/components/ui/sidebar';
+import { Button } from '@/components/ui/button';
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
-  const { currentStaff } = useRole();
+  const { currentStaff, logout } = useRole();
 
   const navItems = [
-    { title: 'Новая заявка', url: '/', icon: FileText },
     ...(currentStaff?.role === 'dispatcher'
-      ? [{ title: 'Диспетчерская', url: '/dispatcher', icon: LayoutDashboard }]
+      ? [
+          { title: 'Диспетчерская', url: '/dispatcher', icon: LayoutDashboard },
+          { title: 'Новая заявка', url: '/request', icon: FileText },
+        ]
       : []),
     ...(currentStaff?.role === 'master'
       ? [{ title: 'Мои задачи', url: '/master', icon: Wrench }]
@@ -35,9 +38,9 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border p-4">
         <div className="flex items-center gap-2">
-          <ClipboardList className="h-6 w-6 text-sidebar-primary" />
+          <BrandMark className="h-7 w-7 shrink-0" />
           {!collapsed && (
-            <span className="text-sm font-bold text-sidebar-foreground tracking-tight">
+            <span className="text-sm font-bold tracking-tight text-sidebar-foreground">
               Ремонтная служба
             </span>
           )}
@@ -69,8 +72,31 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-sidebar-border">
-        {!collapsed && <RoleSwitcher />}
+      <SidebarFooter className="border-t border-sidebar-border p-3">
+        {collapsed ? (
+          <Button variant="ghost" size="icon" className="text-sidebar-foreground hover:bg-sidebar-accent" onClick={logout}>
+            <LogOut className="h-4 w-4" />
+          </Button>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-lg bg-sidebar-accent px-3 py-2">
+              <p className="truncate text-sm font-medium text-sidebar-accent-foreground">
+                {currentStaff?.displayName}
+              </p>
+              <p className="text-xs text-sidebar-accent-foreground/70">
+                {currentStaff?.role === "dispatcher" ? "Главный диспетчер" : "Мастер"}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="w-full justify-start border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={logout}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Выйти
+            </Button>
+          </div>
+        )}
       </SidebarFooter>
     </Sidebar>
   );

@@ -1,100 +1,119 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useRole } from '@/contexts/RoleContext';
-import { StatusBadge } from '@/components/StatusBadge';
-import { formatDate, statusConfig } from '@/lib/request-utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { toast } from 'sonner';
-import { UserPlus, XCircle, History, RefreshCw } from 'lucide-react';
-import type { Tables, Enums } from '@/integrations/supabase/types';
-
-type Request = Tables<'requests'> & { staff: { name: string } | null };
-type AuditEntry = Tables<'audit_log'> & { staff: { name: string } | null };
+import { useEffect, useState } from "react";
+import { assignRequest, cancelRequest, fetchAuditLog, fetchDispatcherRequests, fetchMasters } from "@/lib/backend-api";
+import { getUiErrorMessage } from "@/lib/ui-messages";
+import { useRole } from "@/contexts/RoleContext";
+import { StatusBadge } from "@/components/StatusBadge";
+import { formatDate } from "@/lib/request-utils";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AuditLogDialog } from "@/components/AuditLogDialog";
+import { toast } from "sonner";
+import { XCircle, History, RefreshCw } from "lucide-react";
+import type { AuditEntry, RequestRecord } from "@/lib/app-types";
 
 const statusFilters: Array<{ value: string; label: string }> = [
-  { value: 'all', label: 'Все' },
-  { value: 'new', label: 'Новые' },
-  { value: 'assigned', label: 'Назначенные' },
-  { value: 'in_progress', label: 'В работе' },
-  { value: 'done', label: 'Выполненные' },
-  { value: 'canceled', label: 'Отменённые' },
+  { value: "all", label: "Все" },
+  { value: "new", label: "Новые" },
+  { value: "assigned", label: "Назначенные" },
+  { value: "in_progress", label: "В работе" },
+  { value: "done", label: "Выполненные" },
+  { value: "canceled", label: "Отмененные" },
 ];
 
 const DispatcherDashboard = () => {
-  const { currentStaff, allStaff } = useRole();
-  const [requests, setRequests] = useState<Request[]>([]);
-  const [filter, setFilter] = useState('all');
+  const { authToken, logout } = useRole();
+  const [requests, setRequests] = useState<RequestRecord[]>([]);
+  const [masters, setMasters] = useState<Array<{ id: string; username: string; display_name: string }>>([]);
+  const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [auditDialogOpen, setAuditDialogOpen] = useState(false);
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
 
-  const masters = allStaff.filter((s) => s.role === 'master');
-
-  const fetchRequests = async () => {
-    setLoading(true);
-    let query = supabase.from('requests').select('*, staff:assigned_to(name)').order('created_at', { ascending: false });
-    if (filter !== 'all') {
-      query = query.eq('status', filter as Enums<'request_status'>);
+  const loadRequests = async () => {
+    if (!authToken) {
+      return;
     }
-    const { data } = await query;
-    if (data) setRequests(data as Request[]);
-    setLoading(false);
+
+    setLoading(true);
+    try {
+      const data = await fetchDispatcherRequests(authToken, filter);
+      setRequests(data);
+    } catch (error) {
+      const message = getUiErrorMessage(error, "Не удалось загрузить заявки.");
+      toast.error(message);
+      if ((error as Error & { status?: number }).status === 401) {
+        logout();
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMasters = async () => {
+    if (!authToken) {
+      return;
+    }
+
+    try {
+      const data = await fetchMasters(authToken);
+      setMasters(data);
+    } catch (error) {
+      toast.error(getUiErrorMessage(error, "Не удалось загрузить список мастеров."));
+    }
   };
 
   useEffect(() => {
-    fetchRequests();
-  }, [filter]);
+    void loadRequests();
+  }, [authToken, filter]);
+
+  useEffect(() => {
+    void loadMasters();
+  }, [authToken]);
 
   const handleAssign = async (requestId: string, masterId: string, version: number) => {
-    const { data, error } = await supabase.rpc('update_request_status', {
-      p_request_id: requestId,
-      p_new_status: 'assigned' as Enums<'request_status'>,
-      p_expected_version: version,
-      p_changed_by: currentStaff?.id,
-      p_assigned_to: masterId,
-    });
-
-    if (error || !data?.[0]?.success) {
-      toast.error('Конфликт версий! Данные были изменены. Обновите страницу.');
-      fetchRequests();
+    if (!authToken) {
       return;
     }
-    toast.success('Мастер назначен');
-    fetchRequests();
+
+    try {
+      await assignRequest(authToken, requestId, masterId, version);
+      toast.success("Мастер назначен.");
+    } catch (error) {
+      toast.error(getUiErrorMessage(error, "Не удалось назначить мастера."));
+    }
+
+    void loadRequests();
   };
 
   const handleCancel = async (requestId: string, version: number) => {
-    const { data, error } = await supabase.rpc('update_request_status', {
-      p_request_id: requestId,
-      p_new_status: 'canceled' as Enums<'request_status'>,
-      p_expected_version: version,
-      p_changed_by: currentStaff?.id,
-    });
-
-    if (error || !data?.[0]?.success) {
-      toast.error('Конфликт версий! Обновите страницу.');
-      fetchRequests();
+    if (!authToken) {
       return;
     }
-    toast.success('Заявка отменена');
-    fetchRequests();
+
+    try {
+      await cancelRequest(authToken, requestId, version);
+      toast.success("Заявка отменена.");
+    } catch (error) {
+      toast.error(getUiErrorMessage(error, "Не удалось отменить заявку."));
+    }
+
+    void loadRequests();
   };
 
   const showAuditLog = async (requestId: string) => {
-    setSelectedRequestId(requestId);
-    const { data } = await supabase
-      .from('audit_log')
-      .select('*, staff:changed_by(name)')
-      .eq('request_id', requestId)
-      .order('created_at', { ascending: true });
-    if (data) setAuditLog(data as AuditEntry[]);
-    setAuditDialogOpen(true);
+    if (!authToken) {
+      return;
+    }
+
+    try {
+      const data = await fetchAuditLog(authToken, requestId);
+      setAuditLog(data);
+      setAuditDialogOpen(true);
+    } catch (error) {
+      toast.error(getUiErrorMessage(error, "Не удалось загрузить историю действий."));
+    }
   };
 
   return (
@@ -104,19 +123,14 @@ const DispatcherDashboard = () => {
           <h1 className="text-2xl font-bold text-foreground">Диспетчерская</h1>
           <p className="text-muted-foreground">Управление заявками на ремонт</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchRequests}>
+        <Button variant="outline" size="sm" onClick={() => void loadRequests()}>
           <RefreshCw className="mr-2 h-4 w-4" /> Обновить
         </Button>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-wrap gap-2">
         {statusFilters.map((sf) => (
-          <Button
-            key={sf.value}
-            variant={filter === sf.value ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilter(sf.value)}
-          >
+          <Button key={sf.value} variant={filter === sf.value ? "default" : "outline"} size="sm" onClick={() => setFilter(sf.value)}>
             {sf.label}
           </Button>
         ))}
@@ -138,81 +152,56 @@ const DispatcherDashboard = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {requests.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.client_name}</TableCell>
-                  <TableCell className="text-muted-foreground">{r.phone}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{r.address}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{r.problem_text}</TableCell>
-                  <TableCell><StatusBadge status={r.status} /></TableCell>
-                  <TableCell className="text-muted-foreground">{r.staff?.name || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground text-xs">{formatDate(r.created_at)}</TableCell>
+              {requests.map((request) => (
+                <TableRow key={request.id}>
+                  <TableCell className="font-medium">{request.client_name}</TableCell>
+                  <TableCell className="text-muted-foreground">{request.phone}</TableCell>
+                  <TableCell className="max-w-[200px] truncate">{request.address}</TableCell>
+                  <TableCell className="max-w-[220px] truncate">{request.problem_text}</TableCell>
+                  <TableCell><StatusBadge status={request.status} /></TableCell>
+                  <TableCell className="text-muted-foreground">{request.assigned_to_name || "-"}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{formatDate(request.created_at)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      {r.status === 'new' && (
+                      {request.status === "new" || request.status === "assigned" ? (
                         <>
-                          <Select onValueChange={(masterId) => handleAssign(r.id, masterId, r.version)}>
-                            <SelectTrigger className="h-8 w-[140px] text-xs">
-                              <SelectValue placeholder="Назначить" />
+                          <Select onValueChange={(masterId) => void handleAssign(request.id, masterId, request.version)}>
+                            <SelectTrigger className="h-8 w-[160px] text-xs">
+                              <SelectValue placeholder="Назначить мастера" />
                             </SelectTrigger>
                             <SelectContent>
-                              {masters.map((m) => (
-                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                              {masters.map((master) => (
+                                <SelectItem key={master.id} value={master.id}>
+                                  {master.display_name}
+                                </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleCancel(r.id, r.version)}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => void handleCancel(request.id, request.version)}>
                             <XCircle className="h-4 w-4" />
                           </Button>
                         </>
-                      )}
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => showAuditLog(r.id)}>
+                      ) : null}
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void showAuditLog(request.id)}>
                         <History className="h-4 w-4" />
                       </Button>
                     </div>
                   </TableCell>
                 </TableRow>
               ))}
-              {!loading && requests.length === 0 && (
+              {!loading && requests.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                    Нет заявок
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                    Заявок по текущему фильтру нет.
                   </TableCell>
                 </TableRow>
-              )}
+              ) : null}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      <Dialog open={auditDialogOpen} onOpenChange={setAuditDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>История изменений</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="max-h-[400px]">
-            <div className="space-y-3">
-              {auditLog.map((entry) => (
-                <div key={entry.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      {entry.old_status && <StatusBadge status={entry.old_status} />}
-                      {entry.old_status && <span className="text-muted-foreground">→</span>}
-                      <StatusBadge status={entry.new_status} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {entry.staff?.name || 'Система'} • {formatDate(entry.created_at)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {auditLog.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">Нет записей</p>
-              )}
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
+      <AuditLogDialog entries={auditLog} open={auditDialogOpen} onOpenChange={setAuditDialogOpen} />
     </div>
   );
 };

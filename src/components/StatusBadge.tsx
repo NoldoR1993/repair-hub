@@ -1,9 +1,9 @@
 import { Badge } from '@/components/ui/badge';
 import { statusConfig } from '@/lib/request-utils';
-import type { Enums } from '@/integrations/supabase/types';
+import type { RequestStatus } from '@/lib/app-types';
 
 interface StatusBadgeProps {
-  status: Enums<'request_status'>;
+  status: RequestStatus;
 }
 
 export const StatusBadge = ({ status }: StatusBadgeProps) => {

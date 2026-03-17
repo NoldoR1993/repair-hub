@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: repair-hub-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-repair_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-repair_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-repair_hub}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-repair_hub} -d ${POSTGRES_DB:-repair_hub}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: repair-hub-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-repair_hub}:${POSTGRES_PASSWORD:-repair_hub}@db:5432/${POSTGRES_DB:-repair_hub}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      CORS_ORIGIN: http://localhost,http://127.0.0.1,http://localhost:8080,http://127.0.0.1:8080
+    expose:
+      - "4000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: classic-frontend/Dockerfile
+    container_name: repair-hub-frontend
+    depends_on:
+      - backend
+    ports:
+      - "${APP_PORT:-80}:80"
+
+volumes:
+  postgres_data:

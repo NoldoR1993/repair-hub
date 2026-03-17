@@ -1,6 +1,4 @@
-import { Enums } from '@/integrations/supabase/types';
-
-type RequestStatus = Enums<'request_status'>;
+import type { RequestStatus } from '@/lib/app-types';
 
 export const statusConfig: Record<RequestStatus, { label: string; color: string; bgClass: string; textClass: string }> = {
   new: { label: 'Новая', color: 'status-new', bgClass: 'bg-status-new/15', textClass: 'text-status-new' },
