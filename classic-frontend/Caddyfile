@@ -2,10 +2,14 @@
   root * /srv
   encode zstd gzip
 
-  handle_path /api/* {
+  @api path /api/*
+  handle @api {
+    uri strip_prefix /api
     reverse_proxy backend:4000
   }
 
-  try_files {path} /index.html
-  file_server
+  handle {
+    try_files {path} /index.html
+    file_server
+  }
 }
