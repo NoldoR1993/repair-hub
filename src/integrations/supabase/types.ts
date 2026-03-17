@@ -14,16 +14,142 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audit_log: {
+        Row: {
+          changed_by: string | null
+          created_at: string
+          id: string
+          new_status: Database["public"]["Enums"]["request_status"]
+          note: string | null
+          old_status: Database["public"]["Enums"]["request_status"] | null
+          request_id: string
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_status: Database["public"]["Enums"]["request_status"]
+          note?: string | null
+          old_status?: Database["public"]["Enums"]["request_status"] | null
+          request_id: string
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          new_status?: Database["public"]["Enums"]["request_status"]
+          note?: string | null
+          old_status?: Database["public"]["Enums"]["request_status"] | null
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_log_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      requests: {
+        Row: {
+          address: string
+          assigned_to: string | null
+          client_name: string
+          created_at: string
+          id: string
+          phone: string
+          problem_text: string
+          status: Database["public"]["Enums"]["request_status"]
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          address: string
+          assigned_to?: string | null
+          client_name: string
+          created_at?: string
+          id?: string
+          phone: string
+          problem_text: string
+          status?: Database["public"]["Enums"]["request_status"]
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          address?: string
+          assigned_to?: string | null
+          client_name?: string
+          created_at?: string
+          id?: string
+          phone?: string
+          problem_text?: string
+          status?: Database["public"]["Enums"]["request_status"]
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      update_request_status: {
+        Args: {
+          p_assigned_to?: string
+          p_changed_by?: string
+          p_expected_version: number
+          p_new_status: Database["public"]["Enums"]["request_status"]
+          p_request_id: string
+        }
+        Returns: {
+          current_status: Database["public"]["Enums"]["request_status"]
+          current_version: number
+          success: boolean
+        }[]
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "dispatcher" | "master"
+      request_status: "new" | "assigned" | "in_progress" | "done" | "canceled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +276,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["dispatcher", "master"],
+      request_status: ["new", "assigned", "in_progress", "done", "canceled"],
+    },
   },
 } as const
